@@ -1,0 +1,58 @@
+[
+  {
+    "itemType": "bookSection",
+    "title": "",
+    "creators": [
+      {
+        "firstName": "",
+        "lastName": "",
+        "creatorType": "bookAuthor"
+      },
+      {
+        "firstName": "",
+        "lastName": "",
+        "creatorType": "author"
+      },
+      {
+        "firstName": "",
+        "lastName": "",
+        "creatorType": "contributor"
+      },
+      {
+        "firstName": "",
+        "lastName": "",
+        "creatorType": "editor"
+      },
+      {
+        "firstName": "",
+        "lastName": "",
+        "creatorType": "translator"
+      },
+      {
+        "firstName": "",
+        "lastName": "",
+        "creatorType": "seriesEditor"
+      }
+    ],
+    "bookTitle": "",
+    "series": "",
+    "seriesNumber": "",
+    "volume": "",
+    "numberOfVolumes": "",
+    "edition": "",
+    "place": "",
+    "ISBN": "",
+    "publisher": "",
+    "date": "",
+    "pages": "",
+    "extra": "",
+    "archive": "",
+    "archiveLocation": "",
+    "libraryCatalog": "",
+    "url": "",
+    "callNumber": "",
+    "rights": "",
+    "accessDate": "",
+    "shortTitle": ""
+  }
+]

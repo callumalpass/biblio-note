@@ -1,0 +1,34 @@
+[
+  {
+    "title": "test",
+    "abstractNote": "",
+    "edition": "",
+    "place": "",
+    "date": "",
+    "numPages": "",
+    "language": "",
+    "university": "",
+    "shortTitle": "",
+    "url": "",
+    "accessDate": "",
+    "archive": "",
+    "archiveLocation": "",
+    "libraryCatalog": "",
+    "callNumber": "",
+    "rights": "",
+    "extra": "",
+    "itemType": "thesis",
+    "creators": [
+      {
+        "firstName": "",
+        "lastName": "",
+        "creatorType": "author"
+      },
+      {
+        "firstName": "",
+        "lastName": "",
+        "creatorType": "contributor"
+      }
+    ]
+  }
+]

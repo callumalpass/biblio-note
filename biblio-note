@@ -1,0 +1,333 @@
+#!/bin/bash
+
+# Description: biblio-note - Enhanced script to collect bibliographic information,
+#              create a resource directory, and generate Markdown reading notes.
+#              Utilizes fzf for interactive selections and a configuration file.
+
+IFS=$'\n\t'
+
+# Configuration
+CONFIG_DIR="$HOME/.config"
+CONFIG_FILE="$CONFIG_DIR/biblio-note"
+mkdir -p "$CONFIG_DIR"
+
+# Default configurations
+EDITOR=${EDITOR:-nvim}
+# Default to the submodule path for translation server
+TRANSLATION_SERVER_DIR="./vendor/translation-server"
+BIBLIB_DIR="$HOME/Dropbox/notes/biblib"
+LOG_FILE="$HOME/.script_logs/biblio-note.log"
+mkdir -p "$(dirname "$LOG_FILE")"
+
+# Load configurations if the file exists
+if [[ -f "$CONFIG_FILE" ]]; then
+    source "$CONFIG_FILE"
+    log "INFO" "Loaded configuration from $CONFIG_FILE"
+fi
+
+# Logging function (no change)
+log() {
+    local level="$1"
+    local message="$2"
+    echo "$(date +"%Y-%m-%d %H:%M:%S") [$level] $message" | tee -a "$LOG_FILE"
+}
+
+# Exit codes (no change)
+EXIT_SUCCESS=0
+EXIT_MISSING_DEPENDENCY=1
+EXIT_INVALID_INPUT=2
+EXIT_API_FAILURE=3
+EXIT_FILE_ERROR=4
+EXIT_UNKNOWN=99
+
+# Error handling (no change)
+error_exit() {
+    local message="$1"
+    local code="${2:-$EXIT_UNKNOWN}"
+    log "ERROR" "$message"
+    if [[ "$code" == "$EXIT_MISSING_DEPENDENCY" ]]; then
+        echo "Please install the missing dependency and try again." >&2
+    else
+        echo "Error: $message" >&2
+    fi
+    exit "$code"
+}
+
+# Cleanup function (no change)
+declare -a TEMP_FILES=()
+cleanup() {
+    for tmp in "${TEMP_FILES[@]}"; do
+        [[ -f "$tmp" ]] && rm -f "$tmp"
+    done
+}
+trap cleanup EXIT
+
+# Dependency check (no change)
+check_dependencies() {
+    for cmd in "$@"; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            error_exit "Missing dependency: $cmd" "$EXIT_MISSING_DEPENDENCY"
+        fi
+    done
+}
+
+# Import functions (no change)
+import_bibtex() {
+    local bibtex_file="$1"
+    curl -s --data-binary @"$bibtex_file" -H 'Content-Type: text/plain' http://127.0.0.1:1969/import
+}
+
+import_csl() {
+    local csl_file="$1"
+    curl -s --data-binary @"$csl_file" -H 'Content-Type: text/plain' http://127.0.0.1:1969/import
+}
+
+get_bibliographic_info() { # No change in function logic
+    local kind="$1"
+    local identifier="$2"
+    local infotmp
+    infotmp=$(mktemp --suffix=.json) || error_exit "Failed to create temporary file" "$EXIT_FILE_ERROR"
+    chmod 600 "$infotmp"
+    TEMP_FILES+=("$infotmp")
+
+    case "$kind" in
+        search|web)
+            json_info=$(curl -s -d "$identifier" -H 'Content-Type: text/plain' "http://127.0.0.1:1969/$kind") || error_exit "Failed to retrieve bibliographic information" "$EXIT_API_FAILURE"
+            ;;
+        template)
+            # Use fzf to select a template file
+            template_choice=$(find "./csl_templates" -type f | fzf --prompt="Select a template file: " --height=40% --ansi)
+            if [[ -z "$template_choice" ]]; then
+                error_exit "No template selected" "$EXIT_INVALID_INPUT"
+            fi
+            json_info=$(jq '.' "$template_choice") || error_exit "Failed to parse template file" "$EXIT_FILE_ERROR"
+            ;;
+        bibtex)
+            echo "Please enter BibTeX data. Press Ctrl+D when finished:"
+            bibtex_data=$(cat) || error_exit "Failed to read BibTeX data" "$EXIT_INVALID_INPUT"
+            if [[ -z "$bibtex_data" ]]; then
+                error_exit "No BibTeX data entered" "$EXIT_INVALID_INPUT"
+            fi
+            echo "$bibtex_data" > /tmp/bibtex_data.bib
+            TEMP_FILES+=("/tmp/bibtex_data.bib")
+            json_info=$(import_bibtex "/tmp/bibtex_data.bib") || error_exit "Failed to import BibTeX data" "$EXIT_API_FAILURE"
+            ;;
+        csl)
+            echo "Please enter CSL data. Press Ctrl+D when finished:"
+            csl_data=$(cat) || error_exit "Failed to read CSL data" "$EXIT_INVALID_INPUT"
+            if [[ -z "$csl_data" ]]; then
+                error_exit "No CSL data entered" "$EXIT_INVALID_INPUT"
+            fi
+            echo "$csl_data" > /tmp/csl_data.json
+            TEMP_FILES+=("/tmp/csl_data.json")
+            json_info=$(import_csl "/tmp/csl_data.json") || error_exit "Failed to import CSL data" "$EXIT_API_FAILURE"
+            ;;
+        *)
+            error_exit "Invalid kind: $kind" "$EXIT_INVALID_INPUT"
+            ;;
+    esac
+
+    echo "$json_info" | jq '[ .[0] ]' > "$infotmp" || error_exit "Failed to format JSON information" "$EXIT_API_FAILURE"
+    echo "$infotmp"
+}
+
+create_resource_directory() { # No change in function logic
+    local citekey="$1"
+    local attachment="$2"
+
+    local new_folder="$BIBLIB_DIR/$citekey"
+    mkdir -p "$new_folder" || error_exit "Failed to create resource directory: $new_folder" "$EXIT_FILE_ERROR"
+
+    local filename
+    filename=$(basename "$attachment")
+    local extension="${filename##*.}"
+
+    if [[ "$extension" == "epub" ]]; then
+        ebook-convert "$attachment" "$new_folder/$citekey.pdf" \
+            --pretty-print \
+            --pdf-serif-family="Crimson Pro" \
+            --embed-all-fonts \
+            --embed-font-family="Crimson Pro" \
+            --paper-size="a5" \
+            --pdf-page-margin-top=12 \
+            --pdf-page-margin-bottom=12 \
+            --pdf-page-margin-left=12 \
+            --pdf-page-margin-right=12 \
+            || error_exit "Failed to convert EPUB to PDF" "$EXIT_API_FAILURE"
+    fi
+
+    if [[ -z "$attachment" ]]; then
+        echo "No attachment selected"
+    else
+
+        cp "$attachment" "$new_folder/$citekey.$extension" || error_exit "Failed to copy attachment" "$EXIT_FILE_ERROR"
+    fi
+}
+
+generate_reading_note() {
+    local citekey="$1"
+    local csljson="$2"
+
+    local readingNote
+    readingNote="$HOME/Dropbox/notes/@$citekey.md"
+
+    local date
+    date=$(date +"%Y-%m-%dT%H:%M:%S%z")
+
+    # Extract authors and year
+    readarray -t authors < <(echo "$csljson" | jq -r '.[] | .author[]? | .given + " " + .family')
+    local year
+    year=$(echo "$csljson" | jq -r '.[] | .issued."date-parts"?[][]')
+
+    # Add id, dateModified, dateAdded
+    csljson=$(echo "$csljson" | jq --arg v "$citekey" --arg d "$date" '.[] + {"id": $v, "dateModified": $d, "dateAdded": $d}')
+    local cslyaml
+    cslyaml=$(echo "$csljson" | yq -P) || error_exit "Failed to convert JSON to YAML" "$EXIT_API_FAILURE"
+
+    {
+        echo "---"
+        echo "$cslyaml"
+        echo "tags:"
+        echo "  - literature_note"
+        echo "authorLink:"
+        for author in "${authors[@]}"; do
+            echo "  - \"[[Author/$author]]\""
+        done
+        echo "year: $year"
+        echo "attachment:"
+        echo "  - \"[[biblib/$citekey/$citekey.pdf|$citekey]]\""
+        echo "---"
+        echo
+        echo "# [[biblib/$citekey/$citekey.pdf|$citekey]]"
+        echo
+        echo
+    } > "$readingNote" || error_exit "Failed to create reading note" "$EXIT_FILE_ERROR"
+
+    "$EDITOR" "$readingNote" || error_exit "Failed to open editor" "$EXIT_UNKNOWN"
+}
+
+# Start translation server (modified for submodule path)
+start_translation_server() {
+    log "INFO" "Starting translation server..."
+    cd "$TRANSLATION_SERVER_DIR" || error_exit "Failed to change directory to translation server" "$EXIT_FILE_ERROR"
+    npm start > "$HOME/.script_logs/translation_server.log" 2>&1 &
+    translation_pid=$!
+    log "INFO" "Translation server started with PID $translation_pid."
+}
+
+# Stop translation server (no change)
+stop_translation_server() {
+    if [[ -n "${translation_pid-}" ]] && ps -p "$translation_pid" > /dev/null 2>&1; then
+        kill "$translation_pid" || log "WARNING" "Failed to kill translation server with PID $translation_pid."
+        wait "$translation_pid" 2>/dev/null
+        log "INFO" "Translation server stopped."
+    fi
+}
+
+# Trap stop translation server (no change)
+trap stop_translation_server EXIT
+
+# Show help (modified to reflect submodule)
+show_help() {
+    cat << EOF
+Usage: $(basename "$0") [options]
+
+Options:
+  -h, --help      Show this help message and exit
+  -v, --version   Show script version and exit
+
+Description:
+  biblio-note - Collects bibliographic information, creates resource directories,
+  and generates Markdown reading notes. Utilizes fzf for selections.
+  Configuration is loaded from ~/.config/biblio-note.
+  Translation server (required) is included as a submodule in 'vendor/translation-server'.
+
+  **After cloning, initialize the submodule:**
+  git submodule init
+  git submodule update
+EOF
+}
+
+# Show version (no change)
+show_version() {
+    echo "$(basename "$0") version 1.2"
+}
+
+# Main script execution (no change)
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        -h|--help) show_help; exit "$EXIT_SUCCESS" ;;
+        -v|--version) show_version; exit "$EXIT_SUCCESS" ;;
+        *) echo "Unknown parameter passed: $1"; show_help; exit "$EXIT_UNKNOWN" ;;
+    esac
+    shift
+done
+
+log "INFO" "Script execution started."
+
+# Check dependencies (no change)
+check_dependencies curl jq yq ebook-convert npm git fzf mkdir cp basename date readarray
+
+# Start translation server (no change)
+start_translation_server
+
+# Prompt for identifier kind (no change)
+kind_options=("search" "web" "template" "bibtex" "csl" "section")
+kind=$(printf "%s\n" "${kind_options[@]}" | fzf --prompt="Select the kind of identifier: " --height=40% --layout=reverse --border)
+
+if [[ -z "$kind" ]]; then
+    error_exit "No kind selected" "$EXIT_INVALID_INPUT"
+fi
+log "INFO" "User selected kind: $kind"
+
+# Prompt for identifier (no change)
+read -rp "Enter the identifier: " identifier
+if [[ -z "$identifier" ]]; then
+    error_exit "No identifier entered" "$EXIT_INVALID_INPUT"
+fi
+log "INFO" "User entered identifier: $identifier"
+
+# Retrieve bibliographic info (no change)
+infotmp=$(get_bibliographic_info "$kind" "$identifier")
+log "INFO" "Retrieved bibliographic information and stored in $infotmp"
+
+# Review bibliographic info (no change)
+echo "Review the bibliographic information. The content of $infotmp will be opened in the editor."
+"$EDITOR" "$infotmp" || error_exit "Failed to open editor for review" "$EXIT_UNKNOWN"
+
+# Format for CSL JSON (no change)
+info=$(jq '.' "$infotmp") || error_exit "Failed to parse JSON information" "$EXIT_API_FAILURE"
+
+# Export CSL JSON (no change)
+csljson=$(curl -s -d "$info" -H 'Content-Type: application/json' 'http://127.0.0.1:1969/export?format=csljson') || error_exit "Failed to export CSL JSON" "$EXIT_API_FAILURE"
+log "INFO" "Exported CSL JSON."
+
+# Prompt for citekey (no change)
+read -rp "Enter Citekey: " citekey
+if [[ -z "$citekey" ]]; then
+    error_exit "No citekey entered" "$EXIT_INVALID_INPUT"
+fi
+log "INFO" "User entered citekey: $citekey"
+
+# Prompt for attachment (no change)
+echo "Please find attachment using nnn"
+read
+attachment=$(nnn -Tt -H -p -)
+
+# Create resource directory and handle attachment (no change)
+create_resource_directory "$citekey" "$attachment"
+log "INFO" "Created resource directory and handled attachment."
+
+# Generate reading note (modified to remove format parameter)
+generate_reading_note "$citekey" "$csljson"
+log "INFO" "Generated reading note in Markdown format."
+
+# Add to reading list and build bib (no change)
+"$HOME/mybin/bibbuild" || error_exit "Failed to build bibliography" "$EXIT_API_FAILURE"
+log "INFO" "Updated reading list and built bibliography."
+
+echo "Success: Script execution completed successfully."
+log "INFO" "Script execution completed successfully."
+
+exit "$EXIT_SUCCESS"
+

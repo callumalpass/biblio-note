@@ -1,0 +1,54 @@
+[
+  {
+    "title": "test",
+    "abstractNote": "",
+    "series": "",
+    "seriesNumber": "",
+    "volume": "",
+    "numberOfVolumes": "",
+    "edition": "",
+    "place": "",
+    "publisher": "",
+    "date": "",
+    "numPages": "",
+    "language": "",
+    "ISBN": "",
+    "shortTitle": "",
+    "url": "",
+    "accessDate": "",
+    "archive": "",
+    "archiveLocation": "",
+    "libraryCatalog": "",
+    "callNumber": "",
+    "rights": "",
+    "extra": "",
+    "itemType": "book",
+    "creators": [
+      {
+        "firstName": "",
+        "lastName": "",
+        "creatorType": "author"
+      },
+      {
+        "firstName": "",
+        "lastName": "",
+        "creatorType": "contributor"
+      },
+      {
+        "firstName": "",
+        "lastName": "",
+        "creatorType": "editor"
+      },
+      {
+        "firstName": "",
+        "lastName": "",
+        "creatorType": "seriesEditor"
+      },
+      {
+        "firstName": "",
+        "lastName": "",
+        "creatorType": "translator"
+      }
+    ]
+  }
+]
