@@ -4,9 +4,9 @@
 
 ## Description
 
-`biblio-note` is a bash script designed to streamline the process of collecting bibliographic information, organizing resources, and creating reading notes. It leverages the [Zotero Translation Server](https://github.com/zotero/translation-server) for retrieving bibliographic metadata from various sources and [fzf](https://github.com/junegunn/fzf) for interactive selections, making the workflow efficient and user-friendly.
+`biblio-note` is a bash script designed to streamline the process of collecting bibliographic information, organizing resources, and creating reading notes. It leverages the [Zotero Translation Server](https://github.com/zotero/translation-server) for retrieving bibliographic metadata from various sources and [fzf](https://github.com/junegunn/fzf) for interactive selections.
 
-The created literature notes can be easily scraped for the creation of CSL-valid json bibliography files for later use with PANDOC. 
+The created literature notes can be easily scraped for the creation of CSL-valid json bibliography files for later use with `pandoc`. 
 
 **Key Features:**
 
@@ -33,12 +33,6 @@ Before running `biblio-note`, ensure you have the following dependencies install
 *   **Text Editor:**
     *   `nvim` (default) or your preferred text editor (configurable in the config file).
 
-**Installation (Example for Ubuntu/Debian):**
-
-```bash
-sudo apt update
-sudo apt install curl jq yq fzf nnn calibre npm git
-```
 
 **Zotero Translation Server Submodule:**
 

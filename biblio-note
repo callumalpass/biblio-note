@@ -19,18 +19,19 @@ BIBLIB_DIR="$HOME/Dropbox/notes/biblib"
 LOG_FILE="$HOME/.script_logs/biblio-note.log"
 mkdir -p "$(dirname "$LOG_FILE")"
 
-# Load configurations if the file exists
-if [[ -f "$CONFIG_FILE" ]]; then
-    source "$CONFIG_FILE"
-    log "INFO" "Loaded configuration from $CONFIG_FILE"
-fi
-
 # Logging function (no change)
 log() {
     local level="$1"
     local message="$2"
     echo "$(date +"%Y-%m-%d %H:%M:%S") [$level] $message" | tee -a "$LOG_FILE"
 }
+
+# Load configurations if the file exists
+if [[ -f "$CONFIG_FILE" ]]; then
+    source "$CONFIG_FILE"
+    log "INFO" "Loaded configuration from $CONFIG_FILE"
+fi
+
 
 # Exit codes (no change)
 EXIT_SUCCESS=0
@@ -82,7 +83,7 @@ import_csl() {
     curl -s --data-binary @"$csl_file" -H 'Content-Type: text/plain' http://127.0.0.1:1969/import
 }
 
-get_bibliographic_info() { # No change in function logic
+get_bibliographic_info() {
     local kind="$1"
     local identifier="$2"
     local infotmp
@@ -96,29 +97,33 @@ get_bibliographic_info() { # No change in function logic
             ;;
         template)
             # Use fzf to select a template file
-            template_choice=$(find "./csl_templates" -type f | fzf --prompt="Select a template file: " --height=40% --ansi)
+            template_choice=$(find "../../csl_templates" -type f | fzf --prompt="Select a template file: " --height=40% --ansi)
             if [[ -z "$template_choice" ]]; then
                 error_exit "No template selected" "$EXIT_INVALID_INPUT"
             fi
             json_info=$(jq '.' "$template_choice") || error_exit "Failed to parse template file" "$EXIT_FILE_ERROR"
             ;;
         bibtex)
-            echo "Please enter BibTeX data. Press Ctrl+D when finished:"
-            bibtex_data=$(cat) || error_exit "Failed to read BibTeX data" "$EXIT_INVALID_INPUT"
-            if [[ -z "$bibtex_data" ]]; then
-                error_exit "No BibTeX data entered" "$EXIT_INVALID_INPUT"
+            echo "Please select BibTeX file using nnn"
+            read
+            bibtex_file=$(nnn -Tt -H -p -)
+            if [[ -z "$bibtex_file" ]]; then
+                error_exit "No BibTeX file selected" "$EXIT_INVALID_INPUT"
             fi
-            echo "$bibtex_data" > /tmp/bibtex_data.bib
+            echo "$bibtex_file"
+            cat "$bibtex_file" > /tmp/bibtex_data.bib
             TEMP_FILES+=("/tmp/bibtex_data.bib")
             json_info=$(import_bibtex "/tmp/bibtex_data.bib") || error_exit "Failed to import BibTeX data" "$EXIT_API_FAILURE"
             ;;
         csl)
-            echo "Please enter CSL data. Press Ctrl+D when finished:"
-            csl_data=$(cat) || error_exit "Failed to read CSL data" "$EXIT_INVALID_INPUT"
-            if [[ -z "$csl_data" ]]; then
-                error_exit "No CSL data entered" "$EXIT_INVALID_INPUT"
+            echo "Please select CSL file using nnn"
+            read
+            csl_file=$(nnn -Tt -H -p -)
+            if [[ -z "$csl_file" ]]; then
+                error_exit "No CSL file selected" "$EXIT_INVALID_INPUT"
             fi
-            echo "$csl_data" > /tmp/csl_data.json
+            echo "$csl_file"
+            cat "$csl_file" > /tmp/csl_data.json
             TEMP_FILES+=("/tmp/csl_data.json")
             json_info=$(import_csl "/tmp/csl_data.json") || error_exit "Failed to import CSL data" "$EXIT_API_FAILURE"
             ;;
@@ -280,12 +285,21 @@ if [[ -z "$kind" ]]; then
 fi
 log "INFO" "User selected kind: $kind"
 
-# Prompt for identifier (no change)
-read -rp "Enter the identifier: " identifier
-if [[ -z "$identifier" ]]; then
-    error_exit "No identifier entered" "$EXIT_INVALID_INPUT"
-fi
-log "INFO" "User entered identifier: $identifier"
+# Prompt for identifier conditionally
+identifier=""
+case "$kind" in
+    search|web)
+        read -rp "Enter the identifier: " identifier
+        if [[ -z "$identifier" ]]; then
+            error_exit "No identifier entered" "$EXIT_INVALID_INPUT"
+        fi
+        log "INFO" "User entered identifier: $identifier"
+        ;;
+    *)
+        log "INFO" "No identifier needed for kind: $kind"
+        ;;
+esac
+
 
 # Retrieve bibliographic info (no change)
 infotmp=$(get_bibliographic_info "$kind" "$identifier")
@@ -303,6 +317,8 @@ csljson=$(curl -s -d "$info" -H 'Content-Type: application/json' 'http://127.0.0
 log "INFO" "Exported CSL JSON."
 
 # Prompt for citekey (no change)
+clear
+echo "$info"
 read -rp "Enter Citekey: " citekey
 if [[ -z "$citekey" ]]; then
     error_exit "No citekey entered" "$EXIT_INVALID_INPUT"
